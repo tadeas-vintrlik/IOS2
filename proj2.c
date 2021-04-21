@@ -9,8 +9,7 @@
 #include <semaphore.h>
 
 /* Constants */
-#define SHMNAME "my_shm"
-#define SEMNAME "my_sem"
+#define SHMNAME "santamem"
 #define REQ_ARGC 5
 #define DECADIC 10
 
@@ -20,11 +19,18 @@
 #define ELFT args[2] // Elf time
 #define RDT args[3] // Reindeer time
 #define UMASK 0644
+#define OP shmptr->operation
 #define OP_INC shmptr->operation++
+#define TOTAL shmptr->total
+#define ENDED shmptr->ended
+#define ENDED_INC shmptr->ended++
+#define MUTEX shmptr->mutex
 
 struct shm {
+    sem_t *mutex;
     unsigned operation;
     unsigned total;
+    unsigned ended;
 };
 
 int main(int argc, char **argv) {
@@ -67,15 +73,25 @@ int main(int argc, char **argv) {
 
     shmptr->operation = 0;
     shmptr->total = 1 + ELFC + RDC;
+    shmptr->ended = 0;
 
     /* Create semaphore */
-    sem_t *mutex = sem_open(SEMNAME, O_CREAT | O_EXCL, UMASK, 1);
-    if (mutex == SEM_FAILED) {
-        perror("sem_open");
+    sem_t mutex;
+    if (sem_init(&mutex, 1, 1) == -1) {
+        perror("sem_init");
         close(fd);
         shm_unlink(SHMNAME);
-        sem_close(mutex);
-        sem_unlink(SEMNAME);
+        return EXIT_FAILURE;
+    }
+
+    shmptr->mutex = &mutex;
+
+    FILE *file = fopen("proj.out", "w+");
+    if (file == NULL) {
+        perror("fopen");
+        close(fd);
+        shm_unlink(SHMNAME);
+        sem_destroy(&mutex);
         return EXIT_FAILURE;
     }
 
@@ -87,10 +103,15 @@ int main(int argc, char **argv) {
 		perror ("fork");
 		return EXIT_FAILURE;
 	} else if (pid == 0) {
-        sem_wait(mutex);
-        printf("%d: Santa\n", OP_INC);
-        sem_post(mutex);
-        sem_close(mutex);
+        sem_wait(MUTEX);
+        fprintf(file, "%d: Santa\n", OP_INC);
+        sem_post(MUTEX);
+
+        sem_wait(MUTEX);
+        ENDED_INC;
+        sem_post(MUTEX);
+
+        fclose(file);
 		return EXIT_SUCCESS;
 	}
 
@@ -101,10 +122,15 @@ int main(int argc, char **argv) {
 			perror ("fork");
 			return EXIT_FAILURE;
 		} else if (pid == 0) {
-            sem_wait(mutex);
-            printf("%d: Elf\n", OP_INC);
-            sem_post(mutex);
-            sem_close(mutex);
+            sem_wait(MUTEX);
+            fprintf(file, "%d: Elf\n", OP_INC);
+            sem_post(MUTEX);
+
+            sem_wait(MUTEX);
+            ENDED_INC;
+            sem_post(MUTEX);
+
+            fclose(file);
             return EXIT_SUCCESS;
 		}
 	}
@@ -116,21 +142,34 @@ int main(int argc, char **argv) {
 			perror ("fork");
 			return EXIT_FAILURE;
 		} else if (pid == 0) {
-            sem_wait(mutex);
-            printf("%d: Reindeer\n", OP_INC);
-            sem_post(mutex);
-            sem_close(mutex);
+            sem_wait(MUTEX);
+            fprintf(file, "%d: Reindeer\n", OP_INC);
+            sem_post(MUTEX);
+
+            sem_wait(MUTEX);
+            ENDED_INC;
+            sem_post(MUTEX);
+
+            fclose(file);
 			return EXIT_SUCCESS;
 		}
 	}
 
+    uint8_t all_done = 0;
+    while (!all_done) {
+        sem_wait(MUTEX);
+        if (ENDED == TOTAL) {
+            all_done = 1;
+        }
+        sem_post(MUTEX);
+    }
+
     /* Close shared memory */
-    munmap(shmptr, sizeof(struct shm));
     shm_unlink(SHMNAME);
 
     /* Close semaphore */
-    sem_close(mutex);
-    sem_unlink(SEMNAME);
+    sem_destroy(&mutex);
 
+    fclose(file);
     return EXIT_SUCCESS;
 }
