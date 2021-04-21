@@ -9,7 +9,6 @@
 #include <semaphore.h>
 
 /* Constants */
-#define SHMNAME "santamem"
 #define REQ_ARGC 5
 #define DECADIC 10
 
@@ -24,12 +23,50 @@
 #define TOTAL shmptr->total
 #define ENDED shmptr->ended
 #define ENDED_INC shmptr->ended++
+#define MUTEX shmptr->mutex
 
 struct shm {
+    sem_t *mutex;
     unsigned operation;
     unsigned total;
     unsigned ended;
 };
+
+void santa(struct shm *shmptr, FILE* file) {
+    sem_wait(MUTEX);
+    fprintf(file, "%d: Santa goint to sleep\n", OP_INC);
+    sem_post(MUTEX);
+
+    sem_wait(MUTEX);
+    ENDED_INC;
+    sem_post(MUTEX);
+
+    fclose(file);
+}
+
+void elf(struct shm *shmptr, FILE *file, unsigned id) {
+    sem_wait(MUTEX);
+    fprintf(file, "%d: Elf %d: started\n", OP_INC, id);
+    sem_post(MUTEX);
+
+    sem_wait(MUTEX);
+    ENDED_INC;
+    sem_post(MUTEX);
+
+    fclose(file);
+}
+
+void reindeer(struct shm *shmptr, FILE *file, unsigned id) {
+    sem_wait(MUTEX);
+    fprintf(file, "%d: RD %d: started.\n", OP_INC, id);
+    sem_post(MUTEX);
+
+    sem_wait(MUTEX);
+    ENDED_INC;
+    sem_post(MUTEX);
+
+    fclose(file);
+}
 
 int main(int argc, char **argv) {
     struct shm *shmptr;
@@ -64,16 +101,18 @@ int main(int argc, char **argv) {
 
     /* Create semaphore */
     sem_t mutex;
-    if (sem_init(&mutex, 0, 1) == -1) {
+    if (sem_init(&mutex, 1, 1) == -1) {
         perror("sem_init");
-        shm_unlink(SHMNAME);
+        munmap(shmptr, sizeof(struct shm));
         return EXIT_FAILURE;
     }
+
+    shmptr->mutex = &mutex;
 
     FILE *file = fopen("proj.out", "w+");
     if (file == NULL) {
         perror("fopen");
-        shm_unlink(SHMNAME);
+        munmap(shmptr, sizeof(struct shm));
         sem_destroy(&mutex);
         return EXIT_FAILURE;
     }
@@ -86,15 +125,7 @@ int main(int argc, char **argv) {
 		perror ("fork");
 		return EXIT_FAILURE;
 	} else if (pid == 0) {
-        sem_wait(&mutex);
-        fprintf(file, "%d: Santa\n", OP_INC);
-        sem_post(&mutex);
-
-        sem_wait(&mutex);
-        ENDED_INC;
-        sem_post(&mutex);
-
-        fclose(file);
+        santa(shmptr, file);
 		return EXIT_SUCCESS;
 	}
 
@@ -105,15 +136,7 @@ int main(int argc, char **argv) {
 			perror ("fork");
 			return EXIT_FAILURE;
 		} else if (pid == 0) {
-            sem_wait(&mutex);
-            fprintf(file, "%d: Elf\n", OP_INC);
-            sem_post(&mutex);
-
-            sem_wait(&mutex);
-            ENDED_INC;
-            sem_post(&mutex);
-
-            fclose(file);
+            elf(shmptr, file, i);
             return EXIT_SUCCESS;
 		}
 	}
@@ -125,26 +148,18 @@ int main(int argc, char **argv) {
 			perror ("fork");
 			return EXIT_FAILURE;
 		} else if (pid == 0) {
-            sem_wait(&mutex);
-            fprintf(file, "%d: Reindeer\n", OP_INC);
-            sem_post(&mutex);
-
-            sem_wait(&mutex);
-            ENDED_INC;
-            sem_post(&mutex);
-
-            fclose(file);
+            reindeer(shmptr, file, i);
 			return EXIT_SUCCESS;
 		}
 	}
 
     uint8_t all_done = 0;
     while (!all_done) {
-        sem_wait(&mutex);
+        sem_wait(MUTEX);
         if (ENDED == TOTAL) {
             all_done = 1;
         }
-        sem_post(&mutex);
+        sem_post(MUTEX);
     }
 
     /* Close shared memory */
