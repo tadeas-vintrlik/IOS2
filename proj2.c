@@ -12,26 +12,30 @@
 /* Constants */
 #define REQ_ARGC 5
 #define DECADIC 10
-
-/* Macros */
-#define ELFC args[0] // Elf count
-#define RDC args[1] // Reindeer count
-#define ELFT args[2] // Elf time
-#define RDT args[3] // Reindeer time
 #define UMASK 0644
 #define MAXELF 1000
 #define MAXRD 20
 #define SHMNAME "/myshm"
 #define SEM_MUTEX "/sem_mutex"
 #define SEM_SANTA "/sem_santa"
+#define SEM_REINDEER "/sem_reindeer"
+
+/* Macros */
+#define ELFC args[0] /* Elf count */
+#define RDC args[1] /* Reindeer count */
+#define ELFT args[2] /* Elf time */
+#define RDT args[3] /* Reindeer time */
+
+/* Semaphore macros */
+#define MUTEX shmptr->mutex
+#define SANTA shmptr->santa
+#define REINDEER shmptr->reindeer
 
 #define OP shmptr->operation
 #define OP_INC shmptr->operation++
 #define TOTAL shmptr->total
 #define ENDED shmptr->ended
 #define ENDED_INC shmptr->ended++
-#define MUTEX shmptr->mutex
-#define SANTA shmptr->santa
 #define RD_BACK shmptr->reindeer_back
 #define RD_TOTAL shmptr->total_reindeer
 #define RD_PREINC ++shmptr->reindeer_back
@@ -39,14 +43,13 @@
 struct shm {
     sem_t *mutex; /* mutual exclusion for shm and file operations */
     sem_t *santa; /* semaphore to signal Santa for help/hitching */
+    sem_t *reindeer; /* semaphore to signal Reindeer for hitching */
     unsigned operation; /* operation counter */
     unsigned total; /* total number of processes */
     unsigned ended; /* number of finished processes */
     unsigned elves; /* number of elves waiting for workshop */
-    unsigned elf_id[MAXELF]; /* "queue" of waiting elves' id */
     unsigned total_reindeer; /* total number of reindeer */
     unsigned reindeer_back; /* number of reindeer return from holiday */
-    unsigned reindeer_id[MAXRD]; /* "queue" of wating reindeer's id */
 };
 
 void santa(struct shm *shmptr, FILE* file) {
@@ -60,9 +63,13 @@ void santa(struct shm *shmptr, FILE* file) {
     sem_wait(SANTA);
     sem_wait(MUTEX);
     if (RD_BACK == RD_TOTAL) {
+        puts("HERE");
         fprintf(file, "%d: Santa: closing workshop\n", OP_INC);
         fflush(file);
-        /* TODO: hitch the reindeer */
+        /* Open the semaphore for each reindeer to get hitched */
+        for (unsigned i = 0; i < RD_TOTAL; i++) {
+            sem_post(REINDEER);
+        }
     }
     sem_post(MUTEX);
 
@@ -73,10 +80,12 @@ void santa(struct shm *shmptr, FILE* file) {
     fclose(file);
     sem_close(SANTA);
     sem_close(MUTEX);
+    sem_close(REINDEER);
 }
 
 void elf(struct shm *shmptr, FILE *file, unsigned id, unsigned time) {
     (void)time;
+    sem_close(REINDEER); /* it does not use it we can mark for closing */
     /* init output in file */
     sem_wait(MUTEX);
     fprintf(file, "%d: Elf %d: started\n", OP_INC, id);
@@ -90,6 +99,7 @@ void elf(struct shm *shmptr, FILE *file, unsigned id, unsigned time) {
     fclose(file);
     sem_close(SANTA);
     sem_close(MUTEX);
+    sem_close(REINDEER);
 }
 
 void reindeer(struct shm *shmptr, FILE *file, unsigned id, unsigned rd_time) {
@@ -115,6 +125,11 @@ void reindeer(struct shm *shmptr, FILE *file, unsigned id, unsigned rd_time) {
     }
     sem_post(MUTEX);
 
+    sem_wait(REINDEER);
+    sem_wait(MUTEX);
+    fprintf(file, "%d: RD: %d: get hitched\n", OP_INC, id);
+    sem_post(MUTEX);
+
     sem_wait(MUTEX);
     ENDED_INC;
     sem_post(MUTEX);
@@ -122,6 +137,7 @@ void reindeer(struct shm *shmptr, FILE *file, unsigned id, unsigned rd_time) {
     fclose(file);
     sem_close(SANTA);
     sem_close(MUTEX);
+    sem_close(REINDEER);
 }
 
 int main(int argc, char **argv) {
@@ -190,8 +206,20 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
+    sem_t *reindeer_sem = sem_open(SEM_REINDEER, O_CREAT | O_EXCL, UMASK, 0);
+    if (santa_sem == SEM_FAILED) {
+        perror("sem_open");
+        munmap(shmptr, sizeof(struct shm));
+        sem_close(santa_sem);
+        sem_unlink(SEM_SANTA);
+        sem_close(mutex);
+        sem_unlink(SEM_MUTEX);
+        return EXIT_FAILURE;
+    }
+
     shmptr->mutex = mutex;
     shmptr->santa = santa_sem;
+    shmptr->reindeer = reindeer_sem;
 
     FILE *file = fopen("proj.out", "w+");
     if (file == NULL) {
@@ -259,6 +287,8 @@ int main(int argc, char **argv) {
     sem_unlink(SEM_SANTA);
     sem_close(mutex);
     sem_unlink(SEM_MUTEX);
+    sem_close(reindeer_sem);
+    sem_unlink(SEM_REINDEER);
 
     fclose(file);
     return EXIT_SUCCESS;
