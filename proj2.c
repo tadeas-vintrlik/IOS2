@@ -155,6 +155,26 @@ void reindeer(struct shm *shmptr, FILE *file, unsigned id, unsigned rd_time) {
     sem_close(DONE);
 }
 
+void cleanup(struct shm *shmptr) {
+    sem_close(MUTEX);
+    sem_unlink(SEM_MUTEX);
+
+    sem_close(SANTA);
+    sem_unlink(SEM_SANTA);
+
+    sem_close(REINDEER);
+    sem_unlink(SEM_REINDEER);
+
+    sem_close(CHRISTMAS);
+    sem_unlink(SEM_CHRISTMAS);
+
+    sem_close(DONE);
+    sem_unlink(SEM_DONE);
+
+    munmap(shmptr, sizeof(struct shm));
+    shm_unlink(SHMNAME);
+}
+
 int main(int argc, char **argv) {
     struct shm *shmptr;
     unsigned args[REQ_ARGC-1];
@@ -207,73 +227,47 @@ int main(int argc, char **argv) {
     sem_t *mutex = sem_open(SEM_MUTEX, O_CREAT | O_EXCL, UMASK, 1);
     if (mutex == SEM_FAILED) {
         perror("sem_open");
-        munmap(shmptr, sizeof(struct shm));
-        sem_unlink(SEM_MUTEX);
+        cleanup(shmptr);
         return EXIT_FAILURE;
     }
+    shmptr->mutex = mutex;
 
     sem_t *santa_sem = sem_open(SEM_SANTA, O_CREAT | O_EXCL, UMASK, 0);
     if (santa_sem == SEM_FAILED) {
         perror("sem_open");
-        munmap(shmptr, sizeof(struct shm));
-        sem_close(mutex);
-        sem_unlink(SEM_MUTEX);
+        cleanup(shmptr);
         return EXIT_FAILURE;
     }
+    shmptr->santa = santa_sem;
 
     sem_t *reindeer_sem = sem_open(SEM_REINDEER, O_CREAT | O_EXCL, UMASK, 0);
     if (reindeer_sem == SEM_FAILED) {
         perror("sem_open");
-        munmap(shmptr, sizeof(struct shm));
-        sem_close(santa_sem);
-        sem_unlink(SEM_SANTA);
-        sem_close(mutex);
-        sem_unlink(SEM_MUTEX);
+        cleanup(shmptr);
         return EXIT_FAILURE;
     }
+    shmptr->reindeer = reindeer_sem;
 
     sem_t *christmas_sem = sem_open(SEM_CHRISTMAS, O_CREAT | O_EXCL, UMASK, 0);
     if (christmas_sem == SEM_FAILED) {
         perror("sem_open");
-        munmap(shmptr, sizeof(struct shm));
-        sem_close(santa_sem);
-        sem_unlink(SEM_SANTA);
-        sem_close(mutex);
-        sem_unlink(SEM_MUTEX);
-        sem_close(reindeer_sem);
-        sem_unlink(SEM_REINDEER);
+        cleanup(shmptr);
         return EXIT_FAILURE;
     }
+    shmptr->christmas = christmas_sem;
 
     sem_t *done_sem = sem_open(SEM_DONE, O_CREAT | O_EXCL, UMASK, 0);
     if (done_sem == SEM_FAILED) {
         perror("sem_open");
-        munmap(shmptr, sizeof(struct shm));
-        sem_close(santa_sem);
-        sem_unlink(SEM_SANTA);
-        sem_close(mutex);
-        sem_unlink(SEM_MUTEX);
-        sem_close(reindeer_sem);
-        sem_unlink(SEM_REINDEER);
-        sem_close(christmas_sem);
-        sem_unlink(SEM_CHRISTMAS);
+        cleanup(shmptr);
         return EXIT_FAILURE;
     }
-
-    shmptr->mutex = mutex;
-    shmptr->santa = santa_sem;
-    shmptr->reindeer = reindeer_sem;
-    shmptr->christmas = christmas_sem;
     shmptr->done = done_sem;
 
     FILE *file = fopen("proj.out", "w+");
     if (file == NULL) {
         perror("fopen");
-        munmap(shmptr, sizeof(struct shm));
-        sem_close(santa_sem);
-        sem_unlink(SEM_SANTA);
-        sem_close(mutex);
-        sem_unlink(SEM_MUTEX);
+        cleanup(shmptr);
         return EXIT_FAILURE;
     }
 
@@ -314,23 +308,7 @@ int main(int argc, char **argv) {
 	}
 
     sem_wait(DONE);
-
-    /* Close shared memory */
-    munmap(shmptr, sizeof(struct shm));
-    shm_unlink(SHMNAME);
-
-    /* Close semaphores */
-    sem_close(santa_sem);
-    sem_unlink(SEM_SANTA);
-    sem_close(mutex);
-    sem_unlink(SEM_MUTEX);
-    sem_close(reindeer_sem);
-    sem_unlink(SEM_REINDEER);
-    sem_close(christmas_sem);
-    sem_unlink(SEM_CHRISTMAS);
-    sem_close(done_sem);
-    sem_unlink(SEM_DONE);
-
+    cleanup(shmptr);
     fclose(file);
     return EXIT_SUCCESS;
 }
