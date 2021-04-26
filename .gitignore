@@ -3,3 +3,5 @@
 *.log
 tmp/
 proj2
+*.o
+*.pdf
