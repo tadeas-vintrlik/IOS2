@@ -241,9 +241,26 @@ void reindeer(struct shm *shmptr, FILE *file, unsigned id, unsigned rd_time) {
     cleanup(shmptr, file);
 }
 
+uint8_t check_args(int args[REQ_ARGC-1]) {
+    if (ELFC <= 0 || ELFC >= 1000) {
+        fprintf(stderr, "Invalid amount of eleves.\n");
+        return 0;
+    } else if (RDC <= 0 || RDC >= 20) {
+        fprintf(stderr, "Invalid amount of reindeer.\n");
+        return 0;
+    } else if (ELFT < 0 || ELFT > 1000) {
+        fprintf(stderr, "Invalid time for elf.\n");
+        return 0;
+    } else if (RDT < 0 || RDT > 1000) {
+        fprintf(stderr, "Invalid time for reindeer.\n");
+        return 0;
+    }
+    return 1;
+}
+
 int main(int argc, char **argv) {
     struct shm *shmptr;
-    unsigned args[REQ_ARGC-1];
+    int args[REQ_ARGC-1];
 
     /* Parse arguments */
 	if (argc != REQ_ARGC) {
@@ -261,7 +278,9 @@ int main(int argc, char **argv) {
 		}
 	}
 
-    /* TODO: Add control if arguments are within limits */
+    if (!check_args(args)) {
+        return EXIT_FAILURE;
+    }
 
     /* Create shared memory */
     int fd = shm_open(SHMNAME, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
@@ -378,7 +397,7 @@ int main(int argc, char **argv) {
 	}
 
 	/* Elf processes */
-	for (unsigned i = 1; i <= ELFC; i++) {
+	for (int i = 1; i <= ELFC; i++) {
 		pid = fork();
 		if (pid == -1) {
 			perror ("fork");
@@ -391,7 +410,7 @@ int main(int argc, char **argv) {
 	}
 
 	/* Reindeer processes */
-	for (unsigned i = 1; i <= RDC; i++) {
+	for (int i = 1; i <= RDC; i++) {
 		pid = fork();
 		if (pid == -1) {
 			perror ("fork");
