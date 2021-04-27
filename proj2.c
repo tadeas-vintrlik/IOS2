@@ -44,7 +44,6 @@
 #define OP shmptr->operation
 #define WORKSHOP shmptr->workshop
 #define OP_INC shmptr->operation++
-#define TOTAL shmptr->total
 #define RD_BACK shmptr->reindeer_back
 #define RD_TOTAL shmptr->total_reindeer
 #define RD_PREINC ++shmptr->reindeer_back
@@ -64,7 +63,6 @@ struct shm {
     sem_t *done_help; /* semaphore to signal santa he can go back to sleep */
     uint8_t workshop; /* boolean if workshop is open */
     unsigned operation; /* operation counter */
-    unsigned total; /* total number of processes */
     unsigned elves; /* number of elves waiting for workshop */
     unsigned total_reindeer; /* total number of reindeer */
     unsigned reindeer_back; /* number of reindeer return from holiday */
@@ -72,6 +70,9 @@ struct shm {
 };
 
 void cleanup(struct shm *shmptr, FILE *file) {
+    /* Process has finished and should open the sem */
+    sem_post(DONE);
+
     sem_close(MUTEX);
     sem_unlink(SEM_MUTEX);
 
@@ -121,6 +122,11 @@ void santa(struct shm *shmptr, FILE* file) {
             fflush(file);
             workshop_open = 0;
             WORKSHOP = 0; /* Tell the leves through shared memory */
+            /* Open all semaphores elves can be stuck on to start holiday */
+            for (unsigned i = 0; i <= ELF_WAIT; i++) {
+                sem_post(ELF);
+                sem_post(HELP);
+            }
             /* Open the semaphore for each reindeer to get hitched */
             for (unsigned i = 0; i <= RD_TOTAL; i++) {
                 sem_post(REINDEER);
@@ -148,10 +154,6 @@ void santa(struct shm *shmptr, FILE* file) {
     fflush(file);
     sem_post(MUTEX);
 
-    sem_wait(MUTEX);
-    sem_post(DONE);
-    sem_post(MUTEX);
-
     cleanup(shmptr, file);
 }
 
@@ -168,11 +170,10 @@ void elf(struct shm *shmptr, FILE *file, unsigned id, unsigned elf_time) {
         usleep(wait_time);
 
         /* check if workshop still open */
-        if (!WORKSHOP) {
-            break;
-        }
+        if (!WORKSHOP) { break; }
 
         sem_wait(ELF);
+        if (!WORKSHOP) { break; }
         sem_wait(MUTEX);
         fprintf(file, "%d: Elf %d: need help\n", OP_INC, id);
         fflush(file);
@@ -184,6 +185,7 @@ void elf(struct shm *shmptr, FILE *file, unsigned id, unsigned elf_time) {
         sem_post(MUTEX);
 
         sem_wait(HELP);
+        if (!WORKSHOP) { break; }
         sem_wait(MUTEX);
         fprintf(file, "%d: Elf %d: get help\n", OP_INC, id);
         fflush(file);
@@ -305,7 +307,6 @@ int main(int argc, char **argv) {
     shmptr->operation = 1;
     shmptr->elves = 0;
     shmptr->workshop = 1;
-    shmptr->total = 1 + ELFC + RDC;
     shmptr->reindeer_back = 0;
     shmptr->reindeer_hitched = 0;
     shmptr->total_reindeer = RDC;
@@ -422,8 +423,10 @@ int main(int argc, char **argv) {
 		}
 	}
 
-    /* TODO: This does not wait for elves */
-    sem_wait(DONE);
+    /* wait for all the processses to end */
+    for (int i = 0; i < 1 + ELFC + RDC; i++) {
+        sem_wait(DONE);
+    }
     cleanup(shmptr, file);
     return EXIT_SUCCESS;
 }
