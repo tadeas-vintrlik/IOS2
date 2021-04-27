@@ -116,7 +116,7 @@ void santa(struct shm *shmptr, FILE* file) {
             workshop_open = 0;
             WORKSHOP = 0; /* Tell the leves through shared memory */
             /* Open the semaphore for each reindeer to get hitched */
-            for (unsigned i = 0; i < RD_TOTAL; i++) {
+            for (unsigned i = 0; i <= RD_TOTAL; i++) {
                 sem_post(REINDEER);
             }
         } else if (ELF_WAIT == 3) {

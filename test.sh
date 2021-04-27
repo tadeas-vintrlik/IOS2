@@ -21,7 +21,7 @@ then
     exit 0
 fi
 
-./proj2 1 2 3 4
+./proj2 5 4 100 100
 echo "Contents of proj.out:"
 cat proj.out
 rm proj.out
