@@ -45,6 +45,9 @@
 #define RD_TOTAL shmptr->total_reindeer
 #define RD_PREINC ++shmptr->reindeer_back
 #define RD_HITCH_PREINC ++shmptr->reindeer_hitched
+#define ELF_WAIT_PREINC ++shmptr->elves
+#define ELF_WAIT_PREDEC --shmptr->elves
+#define ELF_WAIT shmptr->elves
 
 struct shm {
     sem_t *mutex; /* mutual exclusion for shm and file operations */
@@ -110,6 +113,9 @@ void santa(struct shm *shmptr, FILE* file) {
             for (unsigned i = 0; i < RD_TOTAL; i++) {
                 sem_post(REINDEER);
             }
+        } else if (ELF_WAIT == 3) {
+            fprintf(file, "%d: Santa: helping elves\n", OP_INC);
+            fflush(file);
         }
         sem_post(MUTEX);
     }
@@ -145,6 +151,25 @@ void elf(struct shm *shmptr, FILE *file, unsigned id, unsigned elf_time) {
         sem_wait(MUTEX);
         if (!WORKSHOP) {
             break;
+        }
+        sem_post(MUTEX);
+
+        sem_wait(ELF);
+        sem_wait(MUTEX);
+        fprintf(file, "%d: Elf %d: need help\n", OP_INC, id);
+        fflush(file);
+        if (ELF_WAIT_PREINC == 3) {
+            sem_post(SANTA);
+        } else {
+            sem_post(ELF);
+        }
+        sem_post(MUTEX);
+
+        sem_wait(MUTEX);
+        fprintf(file, "%d: Elf %d: get help\n", OP_INC, id);
+        fflush(file);
+        if (ELF_WAIT_PREDEC == 0) {
+            sem_post(ELF);
         }
         sem_post(MUTEX);
     }
@@ -239,6 +264,7 @@ int main(int argc, char **argv) {
     }
 
     shmptr->operation = 1;
+    shmptr->elves = 0;
     shmptr->workshop = 1;
     shmptr->total = 1 + ELFC + RDC;
     shmptr->reindeer_back = 0;
