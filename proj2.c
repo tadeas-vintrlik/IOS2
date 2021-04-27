@@ -314,7 +314,7 @@ int main(int argc, char **argv) {
         cleanup(shmptr, file);
         return EXIT_FAILURE;
     }
-    shmptr->elf = reindeer_sem;
+    shmptr->elf = elf_sem;
 
     sem_t *christmas_sem = sem_open(SEM_CHRISTMAS, O_CREAT | O_EXCL, UMASK, 0);
     if (christmas_sem == SEM_FAILED) {
