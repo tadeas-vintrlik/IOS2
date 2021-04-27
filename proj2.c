@@ -152,16 +152,14 @@ void elf(struct shm *shmptr, FILE *file, unsigned id, unsigned elf_time) {
 
     while (1) {
         /* Alone work */
-        srand(time(NULL));
         unsigned wait_time = rand() % (elf_time+1);
+        printf("elf waiting for: %d\n", wait_time);
         usleep(wait_time);
 
         /* check if workshop still open */
-        sem_wait(MUTEX);
         if (!WORKSHOP) {
             break;
         }
-        sem_post(MUTEX);
 
         sem_wait(ELF);
         sem_wait(MUTEX);
@@ -200,9 +198,8 @@ void reindeer(struct shm *shmptr, FILE *file, unsigned id, unsigned rd_time) {
     sem_post(MUTEX);
 
     /* holiday wait time */
-    srand(time(NULL));
-    /* TODO: This is not the wait time we want */
-    unsigned wait_time = ((unsigned)(rand() + rd_time/2.0)) % rd_time;
+    unsigned wait_time = rand() % ((rd_time/2)+1) + ((rd_time/2)+1);
+    printf("reindeer waiting for: %d\n", wait_time);
     usleep(wait_time);
 
     /* return from holiday */
@@ -366,6 +363,7 @@ int main(int argc, char **argv) {
 			perror ("fork");
 			return EXIT_FAILURE;
 		} else if (pid == 0) {
+            srand(i*time(NULL)); /* create rand seed from id and time */
             elf(shmptr, file, i, ELFT);
             return EXIT_SUCCESS;
 		}
@@ -378,6 +376,7 @@ int main(int argc, char **argv) {
 			perror ("fork");
 			return EXIT_FAILURE;
 		} else if (pid == 0) {
+            srand(i*time(NULL)); /* create rand seed from id and time */
             reindeer(shmptr, file, i, RDT);
 			return EXIT_SUCCESS;
 		}
