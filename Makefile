@@ -1,5 +1,5 @@
 cc=gcc
-cflags=-g -std=gnu99 -Wall -Werror -Wextra -pedantic
+cflags=-std=gnu99 -Wall -Werror -Wextra -pedantic
 ldflags=-lpthread -lrt
 file=proj2
 test=test.sh
@@ -9,8 +9,11 @@ all: $(file).o
 $(file).o: $(file).c
 	$(cc) -c $(cflags) $< -o $(file).o
 
-.PHONY clean test:
+.PHONY clean test zip:
 clean:
 	rm $(file) $(file).o
 test:
 	./$(test)
+
+zip: $(file).c Makefile
+	zip -r $(file).zip $(file).c Makefile
