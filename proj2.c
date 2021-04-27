@@ -23,6 +23,7 @@
 #define SEM_CHRISTMAS "/sem_christmas"
 #define SEM_DONE "/sem_done"
 #define SEM_HELP "/sem_help"
+#define SEM_DONE_HELPING "/sem_done_helping"
 
 /* Macros */
 #define ELFC args[0] /* Elf count */
@@ -38,6 +39,7 @@
 #define CHRISTMAS shmptr->christmas
 #define DONE shmptr->done
 #define HELP shmptr->help
+#define DONE_HELPING shmptr->done_help
 
 #define OP shmptr->operation
 #define WORKSHOP shmptr->workshop
@@ -59,6 +61,7 @@ struct shm {
     sem_t *christmas; /* semaphore to signal Christmas can start */
     sem_t *done; /* semaphore to signal all processes ended */
     sem_t *help; /* semaphore to signal elves they are being helped */
+    sem_t *done_help; /* semaphore to signal santa he can go back to sleep */
     uint8_t workshop; /* boolean if workshop is open */
     unsigned operation; /* operation counter */
     unsigned total; /* total number of processes */
@@ -89,6 +92,9 @@ void cleanup(struct shm *shmptr, FILE *file) {
 
     sem_close(HELP);
     sem_unlink(SEM_HELP);
+
+    sem_close(DONE_HELPING);
+    sem_unlink(SEM_DONE_HELPING);
 
     munmap(shmptr, sizeof(struct shm));
     shm_unlink(SHMNAME);
@@ -125,6 +131,12 @@ void santa(struct shm *shmptr, FILE* file) {
             for (uint8_t i = 0; i < 3; i++) {
                 sem_post(HELP);
             }
+            /* Wait until all the elves are helped */
+            sem_post(MUTEX);
+            sem_wait(DONE_HELPING);
+            sem_wait(MUTEX);
+            fprintf(file, "%d: Santa going to sleep\n", OP_INC);
+            fflush(file);
         }
         sem_post(MUTEX);
     }
@@ -176,6 +188,9 @@ void elf(struct shm *shmptr, FILE *file, unsigned id, unsigned elf_time) {
         fprintf(file, "%d: Elf %d: get help\n", OP_INC, id);
         fflush(file);
         if (ELF_WAIT_PREDEC == 0) {
+            /* tell elves they can start entering workshop again
+             * and Santa he can go to sleep */
+            sem_post(DONE_HELPING);
             sem_post(ELF);
         }
         sem_post(MUTEX);
@@ -334,6 +349,14 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     shmptr->help = help_sem;
+
+    sem_t *done_helping_sem = sem_open(SEM_DONE_HELPING, O_CREAT | O_EXCL, UMASK, 0);
+    if (done_helping_sem == SEM_FAILED) {
+        perror("sem_open");
+        cleanup(shmptr, file);
+        return EXIT_FAILURE;
+    }
+    shmptr->done_help = done_helping_sem;
 
     file = fopen("proj.out", "w+");
     if (file == NULL) {
