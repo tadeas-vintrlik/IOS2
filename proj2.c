@@ -57,6 +57,30 @@ struct shm {
     unsigned reindeer_hitched; /* number of hitched reindeer */
 };
 
+void cleanup(struct shm *shmptr, FILE *file) {
+    sem_close(MUTEX);
+    sem_unlink(SEM_MUTEX);
+
+    sem_close(SANTA);
+    sem_unlink(SEM_SANTA);
+
+    sem_close(REINDEER);
+    sem_unlink(SEM_REINDEER);
+
+    sem_close(CHRISTMAS);
+    sem_unlink(SEM_CHRISTMAS);
+
+    sem_close(DONE);
+    sem_unlink(SEM_DONE);
+
+    munmap(shmptr, sizeof(struct shm));
+    shm_unlink(SHMNAME);
+
+    if (file) {
+        fclose(file);
+    }
+}
+
 void santa(struct shm *shmptr, FILE* file) {
     /* init output in file */
     sem_wait(MUTEX);
@@ -88,12 +112,7 @@ void santa(struct shm *shmptr, FILE* file) {
     sem_post(DONE);
     sem_post(MUTEX);
 
-    fclose(file);
-    sem_close(SANTA);
-    sem_close(MUTEX);
-    sem_close(REINDEER);
-    sem_close(CHRISTMAS);
-    sem_close(DONE);
+    cleanup(shmptr, file);
 }
 
 void elf(struct shm *shmptr, FILE *file, unsigned id, unsigned time) {
@@ -104,12 +123,7 @@ void elf(struct shm *shmptr, FILE *file, unsigned id, unsigned time) {
     fflush(file);
     sem_post(MUTEX);
 
-    fclose(file);
-    sem_close(SANTA);
-    sem_close(MUTEX);
-    sem_close(REINDEER);
-    sem_close(CHRISTMAS);
-    sem_close(DONE);
+    cleanup(shmptr, file);
 }
 
 void reindeer(struct shm *shmptr, FILE *file, unsigned id, unsigned rd_time) {
@@ -121,6 +135,7 @@ void reindeer(struct shm *shmptr, FILE *file, unsigned id, unsigned rd_time) {
 
     /* holiday wait time */
     srand(time(NULL));
+    /* TODO: This is not the wait time we want */
     unsigned wait_time = ((unsigned)(rand() + rd_time/2.0)) % rd_time;
     usleep(wait_time);
 
@@ -147,32 +162,7 @@ void reindeer(struct shm *shmptr, FILE *file, unsigned id, unsigned rd_time) {
     }
     sem_post(MUTEX);
 
-    fclose(file);
-    sem_close(SANTA);
-    sem_close(MUTEX);
-    sem_close(REINDEER);
-    sem_close(CHRISTMAS);
-    sem_close(DONE);
-}
-
-void cleanup(struct shm *shmptr) {
-    sem_close(MUTEX);
-    sem_unlink(SEM_MUTEX);
-
-    sem_close(SANTA);
-    sem_unlink(SEM_SANTA);
-
-    sem_close(REINDEER);
-    sem_unlink(SEM_REINDEER);
-
-    sem_close(CHRISTMAS);
-    sem_unlink(SEM_CHRISTMAS);
-
-    sem_close(DONE);
-    sem_unlink(SEM_DONE);
-
-    munmap(shmptr, sizeof(struct shm));
-    shm_unlink(SHMNAME);
+    cleanup(shmptr, file);
 }
 
 int main(int argc, char **argv) {
@@ -223,11 +213,13 @@ int main(int argc, char **argv) {
     shmptr->reindeer_hitched = 0;
     shmptr->total_reindeer = RDC;
 
+    FILE *file = NULL;
+
     /* Create semaphores */
     sem_t *mutex = sem_open(SEM_MUTEX, O_CREAT | O_EXCL, UMASK, 1);
     if (mutex == SEM_FAILED) {
         perror("sem_open");
-        cleanup(shmptr);
+        cleanup(shmptr, file);
         return EXIT_FAILURE;
     }
     shmptr->mutex = mutex;
@@ -235,7 +227,7 @@ int main(int argc, char **argv) {
     sem_t *santa_sem = sem_open(SEM_SANTA, O_CREAT | O_EXCL, UMASK, 0);
     if (santa_sem == SEM_FAILED) {
         perror("sem_open");
-        cleanup(shmptr);
+        cleanup(shmptr, file);
         return EXIT_FAILURE;
     }
     shmptr->santa = santa_sem;
@@ -243,7 +235,7 @@ int main(int argc, char **argv) {
     sem_t *reindeer_sem = sem_open(SEM_REINDEER, O_CREAT | O_EXCL, UMASK, 0);
     if (reindeer_sem == SEM_FAILED) {
         perror("sem_open");
-        cleanup(shmptr);
+        cleanup(shmptr, file);
         return EXIT_FAILURE;
     }
     shmptr->reindeer = reindeer_sem;
@@ -251,7 +243,7 @@ int main(int argc, char **argv) {
     sem_t *christmas_sem = sem_open(SEM_CHRISTMAS, O_CREAT | O_EXCL, UMASK, 0);
     if (christmas_sem == SEM_FAILED) {
         perror("sem_open");
-        cleanup(shmptr);
+        cleanup(shmptr, file);
         return EXIT_FAILURE;
     }
     shmptr->christmas = christmas_sem;
@@ -259,15 +251,15 @@ int main(int argc, char **argv) {
     sem_t *done_sem = sem_open(SEM_DONE, O_CREAT | O_EXCL, UMASK, 0);
     if (done_sem == SEM_FAILED) {
         perror("sem_open");
-        cleanup(shmptr);
+        cleanup(shmptr, file);
         return EXIT_FAILURE;
     }
     shmptr->done = done_sem;
 
-    FILE *file = fopen("proj.out", "w+");
+    file = fopen("proj.out", "w+");
     if (file == NULL) {
         perror("fopen");
-        cleanup(shmptr);
+        cleanup(shmptr, file);
         return EXIT_FAILURE;
     }
 
@@ -308,7 +300,6 @@ int main(int argc, char **argv) {
 	}
 
     sem_wait(DONE);
-    cleanup(shmptr);
-    fclose(file);
+    cleanup(shmptr, file);
     return EXIT_SUCCESS;
 }
