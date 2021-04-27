@@ -1,7 +1,13 @@
+/**
+ * IOS Project 2 - Santa Claus Problem
+ * Author: Tadeáš Vintrlík <xvintr04>
+ * E-mail: xvintr04@stud.fit.vutbr.cz
+ * Date: 2021-04-27
+ */
 #include <stdio.h>
 #include <sys/mman.h>
-#include <sys/stat.h>        /* For mode constants */
-#include <fcntl.h>           /* For O_* constants */
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -15,21 +21,21 @@
 #define UMASK 0644
 #define MAXELF 1000
 #define MAXRD 20
-#define SHMNAME "/myshm"
-#define SEM_MUTEX "/sem_mutex"
-#define SEM_SANTA "/sem_santa"
-#define SEM_REINDEER "/sem_reindeer"
-#define SEM_ELF "/sem_elf"
-#define SEM_CHRISTMAS "/sem_christmas"
-#define SEM_DONE "/sem_done"
-#define SEM_HELP "/sem_help"
-#define SEM_DONE_HELPING "/sem_done_helping"
+#define SHMNAME "/xvintr04_shm"
+#define SEM_MUTEX "/xvintr04_sem_mutex"
+#define SEM_SANTA "/xvintr04_sem_santa"
+#define SEM_REINDEER "/xvintr04_sem_reindeer"
+#define SEM_ELF "/xvintr04_sem_elf"
+#define SEM_CHRISTMAS "/xvintr04_sem_christmas"
+#define SEM_DONE "/xvintr04_sem_done"
+#define SEM_HELP "/xvintr04_sem_help"
+#define SEM_DONE_HELPING "/xvintr04_sem_done_helping"
 
-/* Macros */
+/* Parameter macros */
 #define ELFC args[0] /* Elf count */
-#define RDC args[1] /* Reindeer count */
+#define RDC args[1]  /* Reindeer count */
 #define ELFT args[2] /* Elf time */
-#define RDT args[3] /* Reindeer time */
+#define RDT args[3]  /* Reindeer time */
 
 /* Semaphore macros */
 #define MUTEX shmptr->mutex
@@ -41,6 +47,7 @@
 #define HELP shmptr->help
 #define DONE_HELPING shmptr->done_help
 
+/* Shared memory macros */
 #define OP shmptr->operation
 #define WORKSHOP shmptr->workshop
 #define OP_INC shmptr->operation++
@@ -51,6 +58,10 @@
 #define ELF_WAIT_PREINC ++shmptr->elves
 #define ELF_WAIT_PREDEC --shmptr->elves
 #define ELF_WAIT shmptr->elves
+#define ELF_TOTAL shmptr->total_elves
+
+/* Macros */
+#define SEM_KILL(semptr,name) sem_close(semptr);sem_unlink(name);
 
 struct shm {
     sem_t *mutex; /* mutual exclusion for shm and file operations */
@@ -65,6 +76,7 @@ struct shm {
     unsigned operation; /* operation counter */
     unsigned elves; /* number of elves waiting for workshop */
     unsigned total_reindeer; /* total number of reindeer */
+    unsigned total_elves; /* total number of elves */
     unsigned reindeer_back; /* number of reindeer return from holiday */
     unsigned reindeer_hitched; /* number of hitched reindeer */
 };
@@ -73,30 +85,17 @@ void cleanup(struct shm *shmptr, FILE *file) {
     /* Process has finished and should open the sem */
     sem_post(DONE);
 
-    sem_close(MUTEX);
-    sem_unlink(SEM_MUTEX);
+    /* Free semaphores */
+    SEM_KILL(MUTEX, SEM_MUTEX);
+    SEM_KILL(SANTA, SEM_SANTA);
+    SEM_KILL(REINDEER, SEM_REINDEER);
+    SEM_KILL(ELF, SEM_ELF);
+    SEM_KILL(CHRISTMAS, SEM_CHRISTMAS);
+    SEM_KILL(DONE, SEM_DONE);
+    SEM_KILL(HELP, SEM_HELP);
+    SEM_KILL(DONE_HELPING, SEM_DONE_HELPING);
 
-    sem_close(SANTA);
-    sem_unlink(SEM_SANTA);
-
-    sem_close(REINDEER);
-    sem_unlink(SEM_REINDEER);
-
-    sem_close(ELF);
-    sem_unlink(SEM_ELF);
-
-    sem_close(CHRISTMAS);
-    sem_unlink(SEM_CHRISTMAS);
-
-    sem_close(DONE);
-    sem_unlink(SEM_DONE);
-
-    sem_close(HELP);
-    sem_unlink(SEM_HELP);
-
-    sem_close(DONE_HELPING);
-    sem_unlink(SEM_DONE_HELPING);
-
+    /* Free shared memeory */
     munmap(shmptr, sizeof(struct shm));
     shm_unlink(SHMNAME);
 
@@ -121,9 +120,13 @@ void santa(struct shm *shmptr, FILE* file) {
             fprintf(file, "%d: Santa: closing workshop\n", OP_INC);
             fflush(file);
             workshop_open = 0;
-            WORKSHOP = 0; /* Tell the leves through shared memory */
-            /* Open all semaphores elves can be stuck on to start holiday */
-            for (unsigned i = 0; i <= ELF_WAIT; i++) {
+            WORKSHOP = 0; /* Tell the elves through shared memory */
+            /* Open all semaphores elves can be stuck on to start holiday
+             * This could be a little excesive since usually there will be
+             * around ELF_WAIT elves waiting, but sometimes they can get stuck
+             * elsewhere, this makes sure it does not happen
+             */
+            for (unsigned i = 0; i <= ELF_TOTAL; i++) {
                 sem_post(ELF);
                 sem_post(HELP);
             }
@@ -310,6 +313,7 @@ int main(int argc, char **argv) {
     shmptr->reindeer_back = 0;
     shmptr->reindeer_hitched = 0;
     shmptr->total_reindeer = RDC;
+    shmptr->total_elves = ELFC;
 
     FILE *file = NULL;
 
