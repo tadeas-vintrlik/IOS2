@@ -22,6 +22,7 @@
 #define SEM_ELF "/sem_elf"
 #define SEM_CHRISTMAS "/sem_christmas"
 #define SEM_DONE "/sem_done"
+#define SEM_HELP "/sem_help"
 
 /* Macros */
 #define ELFC args[0] /* Elf count */
@@ -36,6 +37,7 @@
 #define ELF shmptr->elf
 #define CHRISTMAS shmptr->christmas
 #define DONE shmptr->done
+#define HELP shmptr->help
 
 #define OP shmptr->operation
 #define WORKSHOP shmptr->workshop
@@ -56,6 +58,7 @@ struct shm {
     sem_t *elf; /* semaphore to control elves entering the workshop */
     sem_t *christmas; /* semaphore to signal Christmas can start */
     sem_t *done; /* semaphore to signal all processes ended */
+    sem_t *help; /* semaphore to signal elves they are being helped */
     uint8_t workshop; /* boolean if workshop is open */
     unsigned operation; /* operation counter */
     unsigned total; /* total number of processes */
@@ -75,14 +78,17 @@ void cleanup(struct shm *shmptr, FILE *file) {
     sem_close(REINDEER);
     sem_unlink(SEM_REINDEER);
 
+    sem_close(ELF);
+    sem_unlink(SEM_ELF);
+
     sem_close(CHRISTMAS);
     sem_unlink(SEM_CHRISTMAS);
 
     sem_close(DONE);
     sem_unlink(SEM_DONE);
 
-    sem_close(ELF);
-    sem_unlink(SEM_ELF);
+    sem_close(HELP);
+    sem_unlink(SEM_HELP);
 
     munmap(shmptr, sizeof(struct shm));
     shm_unlink(SHMNAME);
@@ -116,6 +122,9 @@ void santa(struct shm *shmptr, FILE* file) {
         } else if (ELF_WAIT == 3) {
             fprintf(file, "%d: Santa: helping elves\n", OP_INC);
             fflush(file);
+            for (uint8_t i = 0; i < 3; i++) {
+                sem_post(HELP);
+            }
         }
         sem_post(MUTEX);
     }
@@ -165,6 +174,7 @@ void elf(struct shm *shmptr, FILE *file, unsigned id, unsigned elf_time) {
         }
         sem_post(MUTEX);
 
+        sem_wait(HELP);
         sem_wait(MUTEX);
         fprintf(file, "%d: Elf %d: get help\n", OP_INC, id);
         fflush(file);
@@ -322,6 +332,14 @@ int main(int argc, char **argv) {
     }
     shmptr->done = done_sem;
 
+    sem_t *help_sem = sem_open(SEM_HELP, O_CREAT | O_EXCL, UMASK, 0);
+    if (help_sem == SEM_FAILED) {
+        perror("sem_open");
+        cleanup(shmptr, file);
+        return EXIT_FAILURE;
+    }
+    shmptr->help = help_sem;
+
     file = fopen("proj.out", "w+");
     if (file == NULL) {
         perror("fopen");
@@ -365,6 +383,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
+    /* TODO: This does not wait for elves */
     sem_wait(DONE);
     cleanup(shmptr, file);
     return EXIT_SUCCESS;
