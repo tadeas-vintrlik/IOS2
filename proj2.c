@@ -172,11 +172,7 @@ void elf(struct shm *shmptr, FILE *file, unsigned id, unsigned elf_time) {
         unsigned wait_time = rand() % (elf_time+1);
         usleep(wait_time * 1000);
 
-        /* check if workshop still open */
-        if (!WORKSHOP) { break; }
-
         sem_wait(ELF);
-        if (!WORKSHOP) { break; }
         sem_wait(MUTEX);
         fprintf(file, "%d: Elf %d: need help\n", OP_INC, id);
         fflush(file);
