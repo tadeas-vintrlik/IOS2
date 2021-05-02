@@ -107,7 +107,7 @@ void cleanup(struct shm *shmptr, FILE *file) {
 void santa(struct shm *shmptr, FILE* file) {
     /* init output in file */
     sem_wait(MUTEX);
-    fprintf(file, "%d: Santa going to sleep\n", OP_INC);
+    fprintf(file, "%d: Santa: going to sleep\n", OP_INC);
     fflush(file);
     sem_post(MUTEX);
 
@@ -144,7 +144,7 @@ void santa(struct shm *shmptr, FILE* file) {
             sem_post(MUTEX);
             sem_wait(DONE_HELPING);
             sem_wait(MUTEX);
-            fprintf(file, "%d: Santa going to sleep\n", OP_INC);
+            fprintf(file, "%d: Santa: going to sleep\n", OP_INC);
             fflush(file);
         }
         sem_post(MUTEX);
@@ -212,7 +212,7 @@ void elf(struct shm *shmptr, FILE *file, unsigned id, unsigned elf_time) {
 void reindeer(struct shm *shmptr, FILE *file, unsigned id, unsigned rd_time) {
     /* init output in file */
     sem_wait(MUTEX);
-    fprintf(file, "%d: RD %d: started.\n", OP_INC, id);
+    fprintf(file, "%d: RD %d: rstarted\n", OP_INC, id);
     fflush(file);
     sem_post(MUTEX);
 
@@ -222,7 +222,7 @@ void reindeer(struct shm *shmptr, FILE *file, unsigned id, unsigned rd_time) {
 
     /* return from holiday */
     sem_wait(MUTEX);
-    fprintf(file, "%d: RD: %d: return home\n", OP_INC, id);
+    fprintf(file, "%d: RD %d: return home\n", OP_INC, id);
     fflush(file);
 
     /* when last reindeer wake Santa up */
@@ -233,7 +233,7 @@ void reindeer(struct shm *shmptr, FILE *file, unsigned id, unsigned rd_time) {
 
     sem_wait(REINDEER);
     sem_wait(MUTEX);
-    fprintf(file, "%d: RD: %d: get hitched\n", OP_INC, id);
+    fprintf(file, "%d: RD %d: get hitched\n", OP_INC, id);
     fflush(file);
 
     /* when last hitched reindeer christmas can start */
@@ -382,7 +382,7 @@ int main(int argc, char **argv) {
     }
     shmptr->done_help = done_helping_sem;
 
-    file = fopen("proj.out", "w+");
+    file = fopen("proj2.out", "w+");
     if (file == NULL) {
         perror("fopen");
         cleanup(shmptr, file);
