@@ -170,7 +170,7 @@ void elf(struct shm *shmptr, FILE *file, unsigned id, unsigned elf_time) {
     while (1) {
         /* Alone work */
         unsigned wait_time = rand() % (elf_time+1);
-        usleep(wait_time);
+        usleep(wait_time * 1000);
 
         /* check if workshop still open */
         if (!WORKSHOP) { break; }
@@ -218,7 +218,7 @@ void reindeer(struct shm *shmptr, FILE *file, unsigned id, unsigned rd_time) {
 
     /* holiday wait time */
     unsigned wait_time = rand() % ((rd_time/2)+1) + ((rd_time/2)+1);
-    usleep(wait_time);
+    usleep(wait_time * 1000);
 
     /* return from holiday */
     sem_wait(MUTEX);
